@@ -1,21 +1,33 @@
 use anchor_lang::prelude::*;
 use anchor_lang::system_program;
-use anchor_lang::solana_program::program::invoke;
-use anchor_spl::token;
-use anchor_spl::token::{Mint, Token, TokenAccount};
-use solana_program::program::invoke_signed;
+use anchor_spl::token::{self, Mint, Token, TokenAccount, MintTo};
 
-declare_id!("57ny2iMQRgFfNuViGELqLhje3SFHW4GYCE6tbb3VgvUY");
+declare_id!("Gs7vEJ2MRS8GF35Us9CX19PE8dowJU7gsXTbqCFN36Vb");
 
 // Hardcoded receiver address for SOL payment
 const PAYMENT_RECEIVER: &str = "DxioT1JQNh9zatS8V3BZbA5uSV1gDR9qjKR7PYzA8tsL"; // Replace with your actual wallet address
-const SOL_PAYMENT_AMOUNT: u64 = 10_000_000; // 0.01 SOL in lamports
+
+// NFT tier prices
+const TIER1_PRICE: u64 = 1_000_000_000; // 1 SOL in lamports
+const TIER2_PRICE: u64 = 500_000_000;    // 0.5 SOL in lamports
+const TIER3_PRICE: u64 = 100_000_000;    // 0.1 SOL in lamports
 
 #[program]
 pub mod nft_transfer {
     use super::*;
 
-    pub fn transfer_sol_and_mint_nft(ctx: Context<TransferSolAndMintNft>) -> Result<()> {
+    pub fn mint_nft(ctx: Context<MintNFT>, payment_amount: u64) -> Result<()> {
+        // Validate payment amount and determine the NFT tier
+        let tier = if payment_amount >= TIER1_PRICE {
+            "Tier 1"
+        } else if payment_amount >= TIER2_PRICE {
+            "Tier 2"
+        } else if payment_amount >= TIER3_PRICE {
+            "Tier 3"
+        } else {
+            return Err(error!(ErrorCode::InsufficientPayment));
+        };
+        
         // Step 1: Transfer SOL from user to hardcoded address
         let transfer_ix = system_program::Transfer {
             from: ctx.accounts.user.to_account_info(),
@@ -27,39 +39,45 @@ pub mod nft_transfer {
             transfer_ix,
         );
         
-        system_program::transfer(cpi_ctx, SOL_PAYMENT_AMOUNT)?;
+        system_program::transfer(cpi_ctx, payment_amount)?;
         
-        // Step 2: Mint one NFT token to the user
-        token::mint_to(
-            CpiContext::new(
-                ctx.accounts.token_program.to_account_info(),
-                token::MintTo {
-                    mint: ctx.accounts.mint.to_account_info(),
-                    to: ctx.accounts.token_account.to_account_info(),
-                    authority: ctx.accounts.mint_authority.to_account_info(),
-                },
-            ),
-            1,
-        )?;
+        // Step 2: Mint one NFT token to the user's token account
+        let cpi_accounts = MintTo {
+            mint: ctx.accounts.mint.to_account_info(),
+            to: ctx.accounts.token_account.to_account_info(),
+            authority: ctx.accounts.user.to_account_info(),
+        };
         
-        msg!("SOL transferred and NFT minted successfully!");
+        let cpi_program = ctx.accounts.token_program.to_account_info();
+        let cpi_ctx = CpiContext::new(cpi_program, cpi_accounts);
+        token::mint_to(cpi_ctx, 1)?;
+        
+        msg!("NFT {} created and minted successfully!", tier);
         Ok(())
     }
 }
 
 #[derive(Accounts)]
-pub struct TransferSolAndMintNft<'info> {
+#[instruction(payment_amount: u64)]
+pub struct MintNFT<'info> {
     #[account(mut)]
     pub user: Signer<'info>,
     
-    #[account(mut)]
+    #[account(
+        init,
+        payer = user,
+        mint::decimals = 0,
+        mint::authority = user.key(),
+        mint::freeze_authority = user.key(),
+    )]
     pub mint: Account<'info, Mint>,
     
-    #[account(mut)]
+    #[account(
+        mut,
+        token::mint = mint,
+        token::authority = user,
+    )]
     pub token_account: Account<'info, TokenAccount>,
-    
-    /// CHECK: This is the mint authority
-    pub mint_authority: AccountInfo<'info>,
     
     /// CHECK: This is not dangerous, we're just using it as a payment receiver
     #[account(
@@ -71,4 +89,10 @@ pub struct TransferSolAndMintNft<'info> {
     pub token_program: Program<'info, Token>,
     pub system_program: Program<'info, System>,
     pub rent: Sysvar<'info, Rent>,
+}
+
+#[error_code]
+pub enum ErrorCode {
+    #[msg("Payment amount is too low")]
+    InsufficientPayment,
 }
