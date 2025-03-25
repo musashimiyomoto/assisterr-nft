@@ -8,7 +8,7 @@ use solana_program::program::invoke_signed;
 declare_id!("57ny2iMQRgFfNuViGELqLhje3SFHW4GYCE6tbb3VgvUY");
 
 // Hardcoded receiver address for SOL payment
-const PAYMENT_RECEIVER: &str = "SPLEnDChZ5appDz8k61j18RCzMcHeER3Vh7tU46R"; // Replace with your actual wallet address
+const PAYMENT_RECEIVER: &str = "DxioT1JQNh9zatS8V3BZbA5uSV1gDR9qjKR7PYzA8tsL"; // Replace with your actual wallet address
 const SOL_PAYMENT_AMOUNT: u64 = 10_000_000; // 0.01 SOL in lamports
 
 #[program]
